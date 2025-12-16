@@ -34,3 +34,21 @@
 <img width="892" height="212" alt="image" src="https://github.com/user-attachments/assets/7a61ba66-868e-4083-8150-5647dfd41965" />
 
 # CZĘŚĆ NIEOBOWIĄZKOWA
+
+1. **Tak** - https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#migrating-deployments-and-statefulsets-to-horizontal-autoscaling
+
+2. **Parametry RollingUpdate i konfiguracja**
+Strategia aktualizacji: Należy ustawić w Deployment następujące wartości:
+```
+maxSurge: 0
+maxUnavailable: 1
+```
+**Uzasadnienie:** 
+
+**maxSurge: 0** jest konieczny, aby przy maksymalnym wyskalowaniu nie próbować utworzyć nadmiarowego poda, co naruszyłoby ResourceQuota. 
+
+Z kolei **maxUnavailable: 1** zapewnia płynną wymianę podów "jeden za jeden", minimalizując spadki dostępności.
+
+Należy ustawić w HPA parametr **minReplicas: 3**. Jest to niezbędne, ponieważ przy dozwolonej niedostępności jednego poda, musimy mieć minimum 3 repliki, aby zawsze zagwarantować działanie wymaganych dwóch
+
+Możemy  ustawić **maxReplicas** na równi z limitem ResourceQuota (5), co pozwala na maksymalne wykorzystanie zasobów klastra bez ryzyka przekroczenia limitów podczas wdrażania zmian.

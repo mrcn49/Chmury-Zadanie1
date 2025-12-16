@@ -52,3 +52,52 @@ Z kolei **maxUnavailable: 1** zapewnia płynną wymianę podów "jeden za jeden"
 Należy ustawić w HPA parametr **minReplicas: 3**. Jest to niezbędne, ponieważ przy dozwolonej niedostępności jednego poda, musimy mieć minimum 3 repliki, aby zawsze zagwarantować działanie wymaganych dwóch
 
 Możemy  ustawić **maxReplicas** na równi z limitem ResourceQuota (5), co pozwala na maksymalne wykorzystanie zasobów klastra bez ryzyka przekroczenia limitów podczas wdrażania zmian.
+
+# Konfiguracje poszczególnych obiektów
+
+## 1. Przestrzenie nazw **01-namespaces.yaml**
+Utworzono dwie przestrzenie nazw: frontend oraz backend.
+
+## 2. Wdrożenia i Pody 02-deployments-and-pod.yaml:
+
+**Pod my-sql**: Uruchamiany w przestrzeni backend. Posiada nodeAffinity wymagające uruchomienia na węźle oznaczonym etykietą app-location: backend-db. Zdefiniowano limity zasobów (CPU/RAM).
+
+**Deployment backend**: 1 replika serwera nginx. Wykorzystuje podAffinity, aby wymusić uruchomienie na tym samym węźle, na którym działa Pod my-sql.
+
+**Deployment frontend**: 3 repliki serwera nginx. Wykorzystuje nodeAffinity z operatorem NotIn, aby zabronić uruchamiania podów na węźle przeznaczonym dla bazy danych. Gwarantuje to separację warstwy frontendowej od danych.
+
+## 3. Serwisy 03-services.yaml
+
+**frontend-service:** Typ NodePort. Udostępnia aplikację frontend na zewnątrz klastra na sztywno przypisanym porcie 30080.
+
+**backend-service:** Typ ClusterIP. Umożliwia wewnętrzną komunikację z aplikacją backend na porcie 80.
+
+**my-sql-service:** Typ ClusterIP. Udostępnia bazę danych wewnątrz klastra na porcie 3306.
+
+## 4. Ograniczenia zasobów 04-resource-quotas.yaml
+
+**Przestrzeń frontend:** Limit do 10 Podów, maksymalnie 1000m CPU (1 rdzeń) i 1.5Gi pamięci RAM.
+
+**Przestrzeń backend:** Limit do 4 Podów, maksymalnie 1000m CPU i 1.1Gi pamięci RAM. 
+
+## 5. Autoskalowanie 05-hpa-frontend.yaml
+HorizontalPodAutoscaler dla deploymentu frontend
+
+Utrzymuje liczbę replik w przedziale od 3 do 5.
+
+Skalowanie następuje na podstawie utylizacji CPU - próg docelowy: 50%.
+
+## 6. Polityki sieciowe 06-network-policies.yaml
+
+**frontend-egress-policy:** Zezwala Podom frontend na ruch wychodzący tylko do DNS (port 53 UDP/TCP) oraz do serwisu backend (port 80 TCP).
+
+**backend-policy:**
+
+- **Ingress:** Akceptuje ruch HTTP (port 80) tylko z przestrzeni frontend.
+
+- **Egress:** Zezwala na komunikację z bazą danych (port 3306), DNS oraz zwrotnie do frontendu (port 80).
+
+**mysql-ingress-policy:** Ścisła reguła zezwalająca na połączenie do bazy (port 3306) wyłącznie z Podów oznaczonych etykietą role: api (czyli aplikacji backend). Pody frontend nie mają dostępu do bazy.
+
+## 7. Pody testowe (07-test-pods.yaml)
+Dodatkowe pody curl (test-client-fe w przestrzeni frontend i test-client-be w backend). Służą do weryfikacji poprawności konfiguracji NetworkPolicy
